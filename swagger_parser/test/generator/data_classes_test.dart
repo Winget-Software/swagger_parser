@@ -1321,18 +1321,94 @@ import 'another.dart';
 part 'class_name.freezed.dart';
 part 'class_name.g.dart';
 
-@Freezed()
+@Freezed(fromJson: false, toJson: false)
 class ClassName with _$ClassName {
+  const ClassName._();
+
   const factory ClassName({
     required List<List<Another>> anotherList,
     @JsonKey(includeIfNull: false)
     int? intType,
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    @Default(false)
+    bool intTypePresent,
+    @JsonKey(includeIfNull: false)
     List<String>? list,
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    @Default(false)
+    bool listPresent,
     @JsonKey(includeIfNull: false)
     Another? another,
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    @Default(false)
+    bool anotherPresent,
   }) = _ClassName;
-  
-  factory ClassName.fromJson(Map<String, Object?> json) => _$ClassNameFromJson(json);
+
+  factory ClassName.fromJson(Map<String, Object?> json) {
+    final data = _ClassNameJson.fromJson(json);
+    return ClassName(
+      anotherList: data.anotherList,
+      intType: data.intType,
+      intTypePresent: json.containsKey('intType'),
+      list: data.list,
+      listPresent: json.containsKey('list'),
+      another: data.another,
+      anotherPresent: json.containsKey('another'),
+    );
+  }
+
+  Map<String, Object?> toJson() {
+    final json = _ClassNameJson(
+      anotherList: anotherList,
+      intType: intType,
+      list: list,
+      another: another,
+    ).toJson();
+    if (intType == null) {
+      if (intTypePresent) {
+        json['intType'] = null;
+      } else {
+        json.remove('intType');
+      }
+    }
+    if (list == null) {
+      if (listPresent) {
+        json['list'] = null;
+      } else {
+        json.remove('list');
+      }
+    }
+    if (another == null) {
+      if (anotherPresent) {
+        json['another'] = null;
+      } else {
+        json.remove('another');
+      }
+    }
+    return json;
+  }
+}
+
+@JsonSerializable()
+class _ClassNameJson {
+  const _ClassNameJson({
+    required this.anotherList,
+    this.intType,
+    this.list,
+    this.another,
+  });
+
+  factory _ClassNameJson.fromJson(Map<String, Object?> json) => _$ClassNameJsonFromJson(json);
+
+  final List<List<Another>> anotherList;
+  @JsonKey(includeIfNull: false)
+  final int? intType;
+  @JsonKey(includeIfNull: false)
+  final List<String>? list;
+  @JsonKey(includeIfNull: false)
+  final Another? another;
+
+  Map<String, Object?> toJson() => _$ClassNameJsonToJson(this);
 }
 ''';
       expect(filledContent.content, expectedContents);
@@ -1502,18 +1578,81 @@ import 'another.dart';
 part 'class_name.freezed.dart';
 part 'class_name.g.dart';
 
-@Freezed()
+@Freezed(fromJson: false, toJson: false)
 class ClassName with _$ClassName {
+  const ClassName._();
+
   const factory ClassName({
     required int intRequired,
     required List<Another> list,
     @JsonKey(includeIfNull: false)
     int? intNotRequired,
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    @Default(false)
+    bool intNotRequiredPresent,
     @JsonKey(includeIfNull: false)
     Another? anotherNotRequired,
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    @Default(false)
+    bool anotherNotRequiredPresent,
   }) = _ClassName;
-  
-  factory ClassName.fromJson(Map<String, Object?> json) => _$ClassNameFromJson(json);
+
+  factory ClassName.fromJson(Map<String, Object?> json) {
+    final data = _ClassNameJson.fromJson(json);
+    return ClassName(
+      intRequired: data.intRequired,
+      list: data.list,
+      intNotRequired: data.intNotRequired,
+      intNotRequiredPresent: json.containsKey('intNotRequired'),
+      anotherNotRequired: data.anotherNotRequired,
+      anotherNotRequiredPresent: json.containsKey('anotherNotRequired'),
+    );
+  }
+
+  Map<String, Object?> toJson() {
+    final json = _ClassNameJson(
+      intRequired: intRequired,
+      list: list,
+      intNotRequired: intNotRequired,
+      anotherNotRequired: anotherNotRequired,
+    ).toJson();
+    if (intNotRequired == null) {
+      if (intNotRequiredPresent) {
+        json['intNotRequired'] = null;
+      } else {
+        json.remove('intNotRequired');
+      }
+    }
+    if (anotherNotRequired == null) {
+      if (anotherNotRequiredPresent) {
+        json['anotherNotRequired'] = null;
+      } else {
+        json.remove('anotherNotRequired');
+      }
+    }
+    return json;
+  }
+}
+
+@JsonSerializable()
+class _ClassNameJson {
+  const _ClassNameJson({
+    required this.intRequired,
+    required this.list,
+    this.intNotRequired,
+    this.anotherNotRequired,
+  });
+
+  factory _ClassNameJson.fromJson(Map<String, Object?> json) => _$ClassNameJsonFromJson(json);
+
+  final int intRequired;
+  final List<Another> list;
+  @JsonKey(includeIfNull: false)
+  final int? intNotRequired;
+  @JsonKey(includeIfNull: false)
+  final Another? anotherNotRequired;
+
+  Map<String, Object?> toJson() => _$ClassNameJsonToJson(this);
 }
 ''';
       expect(filledContent.content, expectedContents);
@@ -2510,21 +2649,101 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 part 'class_name.freezed.dart';
 part 'class_name.g.dart';
 
-@Freezed()
+@Freezed(fromJson: false, toJson: false)
 class ClassName with _$ClassName {
+  const ClassName._();
+
   const factory ClassName({
     required String list3,
     @JsonKey(includeIfNull: true)
     required String? list5,
     @JsonKey(includeIfNull: false)
     List<List<List<List<String?>>>>? list1,
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    @Default(false)
+    bool list1Present,
     @JsonKey(includeIfNull: false)
     String? list2,
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    @Default(false)
+    bool list2Present,
     @JsonKey(includeIfNull: false)
     String? list4,
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    @Default(false)
+    bool list4Present,
   }) = _ClassName;
-  
-  factory ClassName.fromJson(Map<String, Object?> json) => _$ClassNameFromJson(json);
+
+  factory ClassName.fromJson(Map<String, Object?> json) {
+    final data = _ClassNameJson.fromJson(json);
+    return ClassName(
+      list3: data.list3,
+      list5: data.list5,
+      list1: data.list1,
+      list1Present: json.containsKey('list1'),
+      list2: data.list2,
+      list2Present: json.containsKey('list2'),
+      list4: data.list4,
+      list4Present: json.containsKey('list4'),
+    );
+  }
+
+  Map<String, Object?> toJson() {
+    final json = _ClassNameJson(
+      list3: list3,
+      list5: list5,
+      list1: list1,
+      list2: list2,
+      list4: list4,
+    ).toJson();
+    if (list1 == null) {
+      if (list1Present) {
+        json['list1'] = null;
+      } else {
+        json.remove('list1');
+      }
+    }
+    if (list2 == null) {
+      if (list2Present) {
+        json['list2'] = null;
+      } else {
+        json.remove('list2');
+      }
+    }
+    if (list4 == null) {
+      if (list4Present) {
+        json['list4'] = null;
+      } else {
+        json.remove('list4');
+      }
+    }
+    return json;
+  }
+}
+
+@JsonSerializable()
+class _ClassNameJson {
+  const _ClassNameJson({
+    required this.list3,
+    required this.list5,
+    this.list1,
+    this.list2,
+    this.list4,
+  });
+
+  factory _ClassNameJson.fromJson(Map<String, Object?> json) => _$ClassNameJsonFromJson(json);
+
+  final String list3;
+  @JsonKey(includeIfNull: true)
+  final String? list5;
+  @JsonKey(includeIfNull: false)
+  final List<List<List<List<String?>>>>? list1;
+  @JsonKey(includeIfNull: false)
+  final String? list2;
+  @JsonKey(includeIfNull: false)
+  final String? list4;
+
+  Map<String, Object?> toJson() => _$ClassNameJsonToJson(this);
 }
 ''';
       expect(filledContent.content, expectedContents);
@@ -2586,6 +2805,125 @@ data class ClassName(
 )
 ''';
       expect(filledContent.content, expectedContent);
+    });
+  });
+
+  group('Presence aware serialization', () {
+    test('dart + freezed adds fieldPresent for optional nullable refs',
+        () async {
+      final dataClass = UniversalComponentClass(
+        name: 'UpdateAppointmentDto',
+        imports: const {'UpdateRecurringRuleDto'},
+        parameters: {
+          const UniversalType(
+            type: 'string',
+            name: 'appointmentId',
+            isRequired: true,
+          ),
+          const UniversalType(
+            type: 'UpdateRecurringRuleDto',
+            name: 'recurringRuleData',
+            isRequired: false,
+            referencedNullable: true,
+          ),
+          const UniversalType(
+            type: 'string',
+            name: 'notes',
+            isRequired: false,
+            nullable: true,
+          ),
+        },
+      );
+      const fillController = FillController(
+        config: GeneratorConfig(
+          name: '',
+          outputDirectory: '',
+          jsonSerializer: JsonSerializer.freezed,
+          includeIfNull: true,
+        ),
+      );
+      final filledContent = fillController.fillDtoContent(dataClass);
+      const expectedContents = r'''
+import 'package:freezed_annotation/freezed_annotation.dart';
+
+import 'update_recurring_rule_dto.dart';
+
+part 'update_appointment_dto.freezed.dart';
+part 'update_appointment_dto.g.dart';
+
+@Freezed(fromJson: false, toJson: false)
+class UpdateAppointmentDto with _$UpdateAppointmentDto {
+  const UpdateAppointmentDto._();
+
+  const factory UpdateAppointmentDto({
+    required String appointmentId,
+    @JsonKey(includeIfNull: false)
+    UpdateRecurringRuleDto? recurringRuleData,
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    @Default(false)
+    bool recurringRuleDataPresent,
+    @JsonKey(includeIfNull: false)
+    String? notes,
+    @JsonKey(includeFromJson: false, includeToJson: false)
+    @Default(false)
+    bool notesPresent,
+  }) = _UpdateAppointmentDto;
+
+  factory UpdateAppointmentDto.fromJson(Map<String, Object?> json) {
+    final data = _UpdateAppointmentDtoJson.fromJson(json);
+    return UpdateAppointmentDto(
+      appointmentId: data.appointmentId,
+      recurringRuleData: data.recurringRuleData,
+      recurringRuleDataPresent: json.containsKey('recurringRuleData'),
+      notes: data.notes,
+      notesPresent: json.containsKey('notes'),
+    );
+  }
+
+  Map<String, Object?> toJson() {
+    final json = _UpdateAppointmentDtoJson(
+      appointmentId: appointmentId,
+      recurringRuleData: recurringRuleData,
+      notes: notes,
+    ).toJson();
+    if (recurringRuleData == null) {
+      if (recurringRuleDataPresent) {
+        json['recurringRuleData'] = null;
+      } else {
+        json.remove('recurringRuleData');
+      }
+    }
+    if (notes == null) {
+      if (notesPresent) {
+        json['notes'] = null;
+      } else {
+        json.remove('notes');
+      }
+    }
+    return json;
+  }
+}
+
+@JsonSerializable()
+class _UpdateAppointmentDtoJson {
+  const _UpdateAppointmentDtoJson({
+    required this.appointmentId,
+    this.recurringRuleData,
+    this.notes,
+  });
+
+  factory _UpdateAppointmentDtoJson.fromJson(Map<String, Object?> json) => _$UpdateAppointmentDtoJsonFromJson(json);
+
+  final String appointmentId;
+  @JsonKey(includeIfNull: false)
+  final UpdateRecurringRuleDto? recurringRuleData;
+  @JsonKey(includeIfNull: false)
+  final String? notes;
+
+  Map<String, Object?> toJson() => _$UpdateAppointmentDtoJsonToJson(this);
+}
+''';
+      expect(filledContent.content, expectedContents);
     });
   });
 

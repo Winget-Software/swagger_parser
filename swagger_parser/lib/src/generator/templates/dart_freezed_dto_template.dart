@@ -1,6 +1,7 @@
 import 'package:collection/collection.dart';
 import 'package:swagger_parser/src/generator/model/programming_language.dart';
 import 'package:swagger_parser/src/parser/model/normalized_identifier.dart';
+import 'package:swagger_parser/src/parser/model/universal_collections.dart';
 import 'package:swagger_parser/src/parser/swagger_parser_core.dart';
 import 'package:swagger_parser/src/utils/base_utils.dart';
 import 'package:swagger_parser/src/utils/type_utils.dart';
@@ -20,9 +21,21 @@ String dartFreezedDtoTemplate(
   final isUndiscriminatedUnion =
       dataClass.undiscriminatedUnionVariants?.isNotEmpty ?? false;
   final isUnion = discriminator != null || isUndiscriminatedUnion;
+  final needsPresenceAwareSerialization = includeIfNull &&
+      !isUnion &&
+      _hasPresenceAwareFields(dataClass.parameters);
   final serializerClass =
       useFlutterCompute ? _generateFlutterComputeSerializer(className) : '';
   final asyncImport = useFlutterCompute ? "import 'dart:async';\n\n" : '';
+  final freezedArgs = <String>[
+    if (discriminator != null) "unionKey: '${discriminator.propertyName}'",
+    if (discriminator != null &&
+        fallbackUnion != null &&
+        fallbackUnion.isNotEmpty)
+      "fallbackUnion: '$fallbackUnion'",
+    if (needsPresenceAwareSerialization) 'fromJson: false',
+    if (needsPresenceAwareSerialization) 'toJson: false',
+  ];
 
   return '''
 $asyncImport${ioImport(dataClass.parameters, useMultipartFile: useMultipartFile)}import 'package:freezed_annotation/freezed_annotation.dart';
@@ -30,18 +43,12 @@ ${isUndiscriminatedUnion ? "import 'package:json_annotation/json_annotation.dart
 part '${dataClass.name.toSnake}.freezed.dart';
 part '${dataClass.name.toSnake}.g.dart';
 
-${descriptionComment(dataClass.description)}@Freezed(${[
-    if (discriminator != null) "unionKey: '${discriminator.propertyName}'",
-    if (discriminator != null &&
-        fallbackUnion != null &&
-        fallbackUnion.isNotEmpty)
-      "fallbackUnion: '$fallbackUnion'",
-  ].join(', ')})
+${descriptionComment(dataClass.description)}@Freezed(${freezedArgs.join(', ')})
 ${_classModifier(isUnion: isUnion, isV3: isV3)}class $className with _\$$className {
-${_factories(dataClass, className, useMultipartFile, includeIfNull, fallbackUnion, isUnion: isUnion)}
-${_jsonFactories(className, dataClass.undiscriminatedUnionVariants)}
+${needsPresenceAwareSerialization ? '  const $className._();\n\n' : ''}${_factories(dataClass, className, useMultipartFile, includeIfNull, fallbackUnion, isUnion: isUnion, includePresenceFlags: needsPresenceAwareSerialization)}
+${_jsonFactories(className, dataClass.parameters, dataClass.undiscriminatedUnionVariants, needsPresenceAwareSerialization: needsPresenceAwareSerialization)}
 ${generateValidator ? dataClass.parameters.map(_validationString).nonNulls.join() : ''}}
-${generateValidator ? _validateMethod(className, dataClass.parameters) : ''}$serializerClass''';
+${needsPresenceAwareSerialization ? '\n${_jsonHelperClassTemplate(className, dataClass.parameters, useMultipartFile, includeIfNull)}' : ''}${generateValidator ? _validateMethod(className, dataClass.parameters) : ''}$serializerClass''';
 }
 
 String _classModifier({required bool isUnion, required bool isV3}) {
@@ -175,12 +182,18 @@ String _validateMethod(String className, Set<UniversalType> types) {
   return funcBuffer.toString();
 }
 
-String _factories(UniversalComponentClass dataClass, String className,
-    bool useMultipartFile, bool includeIfNull, String? fallbackUnion,
-    {required bool isUnion}) {
+String _factories(
+  UniversalComponentClass dataClass,
+  String className,
+  bool useMultipartFile,
+  bool includeIfNull,
+  String? fallbackUnion, {
+  required bool isUnion,
+  required bool includePresenceFlags,
+}) {
   if (!isUnion) {
     return '''
-  const factory $className(${dataClass.parameters.isNotEmpty ? '{' : ''}${_parametersToString(dataClass.parameters, useMultipartFile, includeIfNull)}${dataClass.parameters.isNotEmpty ? '\n  }' : ''}) = _$className;''';
+  const factory $className(${dataClass.parameters.isNotEmpty ? '{' : ''}${_parametersToString(dataClass.parameters, useMultipartFile, includeIfNull, includePresenceFlags: includePresenceFlags)}${dataClass.parameters.isNotEmpty ? '\n  }' : ''}) = _$className;''';
   }
 
   if (dataClass.undiscriminatedUnionVariants case final variants?
@@ -211,8 +224,10 @@ String _factories(UniversalComponentClass dataClass, String className,
   }
 
   if (fallbackUnion != null && fallbackUnion.isNotEmpty) {
-    final (protectedFallbackName, _) =
-        protectName(fallbackUnion, isMethod: true);
+    final (protectedFallbackName, _) = protectName(
+      fallbackUnion,
+      isMethod: true,
+    );
     final fallbackFactoryName = protectedFallbackName!.toCamel;
     final unionItemClassName = className + fallbackUnion.toPascal;
     factories.add('''
@@ -224,10 +239,11 @@ String _factories(UniversalComponentClass dataClass, String className,
 }
 
 String _createFactoriesForUndiscriminatedUnion(
-    String className,
-    Map<String, Set<UniversalType>> variants,
-    bool useMultipartFile,
-    bool includeIfNull) {
+  String className,
+  Map<String, Set<UniversalType>> variants,
+  bool useMultipartFile,
+  bool includeIfNull,
+) {
   final factories = <String>[];
   for (final MapEntry(key: variantName, value: factoryParameters)
       in variants.entries) {
@@ -242,14 +258,70 @@ String _createFactoriesForUndiscriminatedUnion(
   return factories.join('\n');
 }
 
-String _jsonFactories(String className,
-    Map<String, Set<UniversalType>>? undiscriminatedUnionVariants) {
+String _jsonFactories(
+  String className,
+  Set<UniversalType> parameters,
+  Map<String, Set<UniversalType>>? undiscriminatedUnionVariants, {
+  required bool needsPresenceAwareSerialization,
+}) {
   if (undiscriminatedUnionVariants case final unionVariants?
       when unionVariants.isNotEmpty) {
     return _fromJsonUndiscriminatedUnion(className);
   }
 
+  if (needsPresenceAwareSerialization) {
+    return _manualJsonFactories(className, parameters);
+  }
+
   return '  \n  factory $className.fromJson(Map<String, Object?> json) => _\$${className}FromJson(json);';
+}
+
+String _manualJsonFactories(String className, Set<UniversalType> parameters) {
+  final sortedParameters = _sortedParameters(parameters);
+  final helperClassName = _jsonHelperClassName(className);
+  final constructorAssignments = sortedParameters.map((parameter) {
+    final buffer = StringBuffer()
+      ..write('      ${parameter.name}: data.${parameter.name},');
+    if (_needsPresenceFlag(parameter)) {
+      buffer.write(
+        '\n      ${_presenceFlagName(parameter)}: json.containsKey(\'${_jsonFieldKey(parameter)}\'),',
+      );
+    }
+    return buffer.toString();
+  }).join('\n');
+  final helperAssignments = sortedParameters
+      .map((parameter) => '      ${parameter.name}: ${parameter.name},')
+      .join('\n');
+  final nullablePostProcessing = sortedParameters
+      .where(_needsPresenceFlag)
+      .map(
+        (parameter) => '''
+    if (${parameter.name} == null) {
+      if (${_presenceFlagName(parameter)}) {
+        json['${_jsonFieldKey(parameter)}'] = null;
+      } else {
+        json.remove('${_jsonFieldKey(parameter)}');
+      }
+    }''',
+      )
+      .join('\n');
+
+  return '''
+
+  factory $className.fromJson(Map<String, Object?> json) {
+    final data = $helperClassName.fromJson(json);
+    return $className(
+$constructorAssignments
+    );
+  }
+
+  Map<String, Object?> toJson() {
+    final json = $helperClassName(
+$helperAssignments
+    ).toJson();
+$nullablePostProcessing
+    return json;
+  }''';
 }
 
 String _fromJsonUndiscriminatedUnion(String className) => '''
@@ -269,6 +341,26 @@ String _fromJsonUndiscriminatedUnion(String className) => '''
       // freezed to skip generating toJson/fromJson for this class.
       throw UnimplementedError();
 ''';
+
+String _jsonHelperClassTemplate(
+  String className,
+  Set<UniversalType> parameters,
+  bool useMultipartFile,
+  bool includeIfNull,
+) {
+  final helperClassName = _jsonHelperClassName(className);
+
+  return '''
+@JsonSerializable()
+class $helperClassName {
+  const $helperClassName(${parameters.isNotEmpty ? '{' : ''}${_jsonHelperConstructorParameters(parameters)}${parameters.isNotEmpty ? '\n  }' : ''});
+
+  factory $helperClassName.fromJson(Map<String, Object?> json) => _\$${helperClassName.substring(1)}FromJson(json);
+${_jsonHelperFields(parameters, useMultipartFile, includeIfNull)}${parameters.isNotEmpty ? '\n' : ''}
+  Map<String, Object?> toJson() => _\$${helperClassName.substring(1)}ToJson(this);
+}
+''';
+}
 
 String? _validationString(UniversalType type) {
   final sb = StringBuffer();
@@ -315,60 +407,159 @@ String? _validationString(UniversalType type) {
   return sb.isEmpty ? null : sb.toString();
 }
 
+List<UniversalType> _sortedParameters(Set<UniversalType> parameters) =>
+    parameters.sorted((a, b) => a.compareTo(b));
+
 String _parametersToString(
-    Set<UniversalType> parameters, bool useMultipartFile, bool includeIfNull) {
-  final sortedByRequired = Set<UniversalType>.from(
-    parameters.sorted((a, b) => a.compareTo(b)),
-  );
-  return sortedByRequired
+  Set<UniversalType> parameters,
+  bool useMultipartFile,
+  bool includeIfNull, {
+  bool includePresenceFlags = false,
+}) {
+  return _sortedParameters(parameters)
       .mapIndexed(
-        (i, e) =>
-            '\n${i != 0 && (e.description?.isNotEmpty ?? false) ? '\n' : ''}${descriptionComment(e.description, tab: '    ')}'
-            '${_jsonKey(e, includeIfNull)}    ${_required(e)}'
-            '${e.toSuitableType(ProgrammingLanguage.dart, useMultipartFile: useMultipartFile)} ${e.name},',
+        (i, parameter) =>
+            '\n${i != 0 && (parameter.description?.isNotEmpty ?? false) ? '\n' : ''}${descriptionComment(parameter.description, tab: '    ')}'
+            '${_jsonKey(parameter, includeIfNull)}    ${_required(parameter)}'
+            '${parameter.toSuitableType(ProgrammingLanguage.dart, useMultipartFile: useMultipartFile)} ${parameter.name},'
+            '${includePresenceFlags && _needsPresenceFlag(parameter) ? _presenceFlagParameter(parameter) : ''}',
       )
       .join();
 }
 
-String _jsonKey(UniversalType t, bool includeIfNull) {
-  final sb = StringBuffer();
+String _presenceFlagParameter(UniversalType parameter) => '\n'
+    '    @JsonKey(includeFromJson: false, includeToJson: false)\n'
+    '    @Default(false)\n'
+    '    bool ${_presenceFlagName(parameter)},';
+
+String _jsonHelperConstructorParameters(
+  Set<UniversalType> parameters,
+) =>
+    _sortedParameters(parameters)
+        .map(
+          (parameter) =>
+              '\n    ${_required(parameter)}this.${parameter.name}${_helperDefaultValue(parameter)},',
+        )
+        .join();
+
+String _jsonHelperFields(
+  Set<UniversalType> parameters,
+  bool useMultipartFile,
+  bool includeIfNull,
+) {
+  return _sortedParameters(parameters)
+      .mapIndexed(
+        (i, parameter) =>
+            '\n${i != 0 && (parameter.description?.isNotEmpty ?? false) ? '\n' : ''}${descriptionComment(parameter.description, tab: '  ')}'
+            '${_jsonHelperFieldAnnotations(parameter, includeIfNull)}  final ${parameter.toSuitableType(ProgrammingLanguage.dart, useMultipartFile: useMultipartFile)} ${parameter.name};',
+      )
+      .join();
+}
+
+String _jsonHelperFieldAnnotations(
+  UniversalType parameter,
+  bool includeIfNull,
+) {
+  final buffer = StringBuffer();
   final jsonKeyParams = <String, String?>{};
 
   if (includeIfNull) {
-    if (t.isRequired && (t.nullable || t.referencedNullable)) {
+    if (parameter.isRequired && _isNullableField(parameter)) {
       jsonKeyParams['includeIfNull'] = 'true';
-    } else if (!t.isRequired && (t.nullable || t.referencedNullable)) {
+    } else if (!parameter.isRequired && _isNullableField(parameter)) {
       jsonKeyParams['includeIfNull'] = 'false';
     }
   }
 
-  if (t.jsonKey != null && t.name != t.jsonKey) {
-    jsonKeyParams['name'] = "'${protectJsonKey(t.jsonKey)}'";
+  if (parameter.jsonKey != null && parameter.name != parameter.jsonKey) {
+    jsonKeyParams['name'] = "'${protectJsonKey(parameter.jsonKey)}'";
+  }
+
+  if (jsonKeyParams.isNotEmpty) {
+    buffer.write(
+      "  @JsonKey(${jsonKeyParams.entries.map((entry) => '${entry.key}: ${entry.value}').join(',')})\n",
+    );
+  }
+
+  if (parameter.deprecated) {
+    buffer.write("  @Deprecated('This is marked as deprecated')\n");
+  }
+
+  return buffer.toString();
+}
+
+String _jsonKey(UniversalType type, bool includeIfNull) {
+  final sb = StringBuffer();
+  final jsonKeyParams = <String, String?>{};
+
+  if (includeIfNull) {
+    if (type.isRequired && _isNullableField(type)) {
+      jsonKeyParams['includeIfNull'] = 'true';
+    } else if (!type.isRequired && _isNullableField(type)) {
+      jsonKeyParams['includeIfNull'] = 'false';
+    }
+  }
+
+  if (type.jsonKey != null && type.name != type.jsonKey) {
+    jsonKeyParams['name'] = "'${protectJsonKey(type.jsonKey)}'";
   }
 
   if (jsonKeyParams.isNotEmpty) {
     sb.write(
-        "    @JsonKey(${jsonKeyParams.entries.map((e) => '${e.key}: ${e.value}').join(',')})\n");
+      "    @JsonKey(${jsonKeyParams.entries.map((entry) => '${entry.key}: ${entry.value}').join(',')})\n",
+    );
   }
 
-  if (t.defaultValue != null) {
-    sb.write('    @Default(${_defaultValue(t)})\n');
+  if (type.defaultValue != null) {
+    sb.write('    @Default(${_defaultValueLiteral(type)})\n');
   }
 
-  if (t.deprecated) {
+  if (type.deprecated) {
     sb.write("    @Deprecated('This is marked as deprecated')\n");
   }
 
   return sb.toString();
 }
 
+bool _hasPresenceAwareFields(Set<UniversalType> parameters) =>
+    parameters.any(_needsPresenceFlag);
+
+bool _needsPresenceFlag(UniversalType parameter) =>
+    !parameter.isRequired && _isNullableField(parameter);
+
+bool _isNullableField(UniversalType parameter) {
+  if (parameter.wrappingCollections.isNotEmpty) {
+    return switch (parameter.wrappingCollections.first) {
+      UniversalCollections.nullableList ||
+      UniversalCollections.nullableListNullableItem ||
+      UniversalCollections.nullableMap ||
+      UniversalCollections.nullableMapNullableValue =>
+        true,
+      _ => false,
+    };
+  }
+
+  return parameter.nullable || parameter.referencedNullable;
+}
+
+String _presenceFlagName(UniversalType parameter) => '${parameter.name}Present';
+
+String _jsonFieldKey(UniversalType parameter) =>
+    protectJsonKey(parameter.jsonKey ?? parameter.name)!;
+
+String _jsonHelperClassName(String className) => '_${className}Json';
+
 /// return required if isRequired
-String _required(UniversalType t) =>
-    t.isRequired && t.defaultValue == null ? 'required ' : '';
+String _required(UniversalType type) =>
+    type.isRequired && type.defaultValue == null ? 'required ' : '';
 
 /// return defaultValue if have
-String _defaultValue(UniversalType t) =>
-    '${t.enumType != null ? '${t.type}.${protectDefaultEnum(t.defaultValue)?.toCamel}' : protectDefaultValue(t.defaultValue, type: t.type)}';
+String _defaultValueLiteral(UniversalType type) =>
+    '${type.enumType != null ? '${type.type}.${protectDefaultEnum(type.defaultValue)?.toCamel}' : protectDefaultValue(type.defaultValue, type: type.type)}';
+
+String _helperDefaultValue(UniversalType type) => type.defaultValue != null
+    ? ' = ${type.wrappingCollections.isNotEmpty ? 'const ' : ''}${_defaultValueLiteral(type)}'
+    : '';
 
 /// Generates top-level serialization functions for Flutter compute isolate support.
 /// These functions follow Retrofit's naming convention for Parser.FlutterCompute.
